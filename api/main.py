@@ -1,27 +1,42 @@
-from fastapi import FastAPI, Query
-import csv
+import pandas as pd
+from typing import List
 import os
+from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 app = FastAPI()
 
-# Load student marks from a CSV file
-STUDENT_MARKS = {}
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-csv_file_path = os.path.join(os.path.dirname(__file__), "C:\Prema\6Jan25\Vercelapp\marks.csv")  # Ensure correct path
+# Load the JSON file (Fixing path issue)
+json_file_path = os.path.join(os.path.dirname(__file__), "marks.json")
 
-# Check if file exists before loading
-if os.path.exists(csv_file_path):
-    with open(csv_file_path, newline='', encoding='utf-8') as csvfile:
-        reader = csv.reader(csvfile)
-        next(reader, None)  # Skip header
-        for row in reader:
-            if len(row) >= 2:
-                name, marks = row[0].strip(), row[1].strip()
-                STUDENT_MARKS[name] = marks
+if os.path.exists(json_file_path):
+    df = pd.read_json(json_file_path)
 else:
-    print("Warning: marks.csv not found!")
+    df = pd.DataFrame()  # Empty DataFrame if file is missing
 
 @app.get("/api")
-def get_marks(name: list[str] = Query([])):
-    return {n: STUDENT_MARKS.get(n, "Not found") for n in name}
+def get_students(class_: List[str] = Query(default=[], alias="class_")):
+    """
+    API to fetch student data based on class filter.
+    Example: /api?class_=10&class_=12
+    """
+    if df.empty:
+        return JSONResponse({"error": "marks.json file not found or empty"}, status_code=500)
 
+    # Filter by class if specified
+    filtered_df = df[df['class'].isin(class_)] if class_ else df
+
+    # Convert the DataFrame to a list of dictionaries
+    students_data = filtered_df.to_dict(orient='records')
+
+    return JSONResponse({"students": students_data})
